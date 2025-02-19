@@ -164,7 +164,7 @@ chrony_install() {
 }
 
 dependency_install() {
-    ${INS} install wget git lsof -y
+    ${INS} install wget git lsof bind9-dnsutils -y
 
     if [[ "${ID}" == "centos" ]]; then
         ${INS} -y install crontabs
@@ -428,6 +428,8 @@ nginx_install() {
 ssl_install() {
     if [[ "${ID}" == "centos" ]]; then
         ${INS} install socat nc -y
+	elif [[ "${ID}" == "debian" && ${VERSION_ID} -ge 12 ]]; then
+		${INS} install socat netcat-openbsd -y
     else
         ${INS} install socat netcat -y
     fi
@@ -439,7 +441,8 @@ ssl_install() {
 
 domain_check() {
     read -rp "请输入你的域名信息(eg:www.wulabing.com):" domain
-    domain_ip=$(curl -sm8 https://ipget.net/?ip="${domain}")
+    domain_ipv4="$(dig +short "${domain}" a)"
+    domain_ipv6="$(dig +short "${domain}" aaaa)"
     echo -e "${OK} ${GreenBG} 正在获取 公网ip 信息，请耐心等待 ${Font}"
     wgcfv4_status=$(curl -s4m8 https://www.cloudflare.com/cdn-cgi/trace -k | grep warp | cut -d= -f2)
     wgcfv6_status=$(curl -s6m8 https://www.cloudflare.com/cdn-cgi/trace -k | grep warp | cut -d= -f2)
@@ -448,8 +451,8 @@ domain_check() {
         wg-quick down wgcf >/dev/null 2>&1
         echo -e "${OK} ${GreenBG} 已关闭 wgcf-warp ${Font}"
     fi
-    local_ipv4=$(curl -s4m8 https://ip.gs)
-    local_ipv6=$(curl -s6m8 https://ip.gs)
+    local_ipv4=$(curl -s4m8 http://ip.sb)
+    local_ipv6=$(curl -s6m8 http://ip.sb)
     if [[ -z ${local_ipv4} && -n ${local_ipv6} ]]; then
         echo -e nameserver 2a01:4f8:c2c:123f::1 > /etc/resolv.conf
         echo -e "${OK} ${GreenBG} 识别为 IPv6 Only 的 VPS，自动添加 DNS64 服务器 ${Font}"
@@ -458,10 +461,10 @@ domain_check() {
     echo -e "本机IPv4: ${local_ipv4}"
     echo -e "本机IPv6: ${local_ipv6}"
     sleep 2
-    if [[ ${domain_ip} == ${local_ipv4} ]]; then
+    if [[ ${domain_ipv4} == ${local_ipv4} ]]; then
         echo -e "${OK} ${GreenBG} 域名 DNS 解析 IP 与 本机 IPv4 匹配 ${Font}"
         sleep 2
-    elif [[ ${domain_ip} == ${local_ipv6} ]]; then
+    elif [[ ${domain_ipv6} == ${local_ipv6} ]]; then
         echo -e "${OK} ${GreenBG} 域名 DNS 解析 IP 与 本机 IPv6 匹配 ${Font}"
         sleep 2
     else
@@ -607,7 +610,7 @@ EOF
 
 start_process_systemd() {
     systemctl daemon-reload
-    chown -R root.root /var/log/v2ray/
+    chown -R root:root /var/log/v2ray/
     if [[ "$shell_mode" != "h2" ]]; then
         systemctl restart nginx
         judge "Nginx 启动"
@@ -767,7 +770,7 @@ ssl_judge_and_install() {
         read -r ssl_delete
         case $ssl_delete in
         [yY][eE][sS] | [yY])
-            rm -rf /data/*
+            rm -rf /data/v2ray.crt /data/v2ray.key
             echo -e "${OK} ${GreenBG} 已删除 ${Font}"
             ;;
         *) ;;
@@ -886,7 +889,7 @@ uninstall_all() {
     [yY][eE][sS] | [yY])
       /root/.acme.sh/acme.sh --uninstall
       rm -rf /root/.acme.sh
-      rm -rf /data/*
+      rm -rf /data/v2ray.crt /data/v2ray.key
       ;;
     *) ;;
     esac
